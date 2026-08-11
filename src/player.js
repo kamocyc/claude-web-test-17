@@ -13,11 +13,24 @@ class Player {
     this.halfWidth = (sheet.frameWidth * config.hitboxWidthRatio) / 2;
     this.halfHeight = (sheet.frameHeight * config.hitboxHeightRatio) / 2;
 
+    // 向きごとに使うコマの並び。設定がなければ全コマを順に使う。
+    const allFrames = Array.from({ length: config.cols }, (_, i) => i);
+    this.sequences = {};
+    for (const direction of Object.keys(config.rowOf)) {
+      this.sequences[direction] = config.frameSequence?.[direction] ?? allFrames;
+    }
+
     this.animator = new WalkAnimator({
-      frameCount: config.cols,
       fps: config.walkFps,
-      idleFrame: config.idleFrame,
+      idleIndex: config.idleIndex,
     });
+  }
+
+  // いま描くべきコマ番号。向きが変わってシーケンスが短くなっても
+  // はみ出さないよう、剰余で丸める。
+  get frameColumn() {
+    const sequence = this.sequences[this.facing];
+    return sequence[this.animator.index % sequence.length];
   }
 
   update(dt, input, world) {
@@ -32,7 +45,7 @@ class Player {
       this.#moveAxis(world, 0, move.y * this.speed * dt);
     }
 
-    this.animator.update(dt, isMoving);
+    this.animator.update(dt, isMoving, this.sequences[this.facing].length);
   }
 
   #facingFor(move, preferredAxis) {
@@ -60,7 +73,7 @@ class Player {
   draw(ctx) {
     const { frameWidth: w, frameHeight: h } = this.sheet;
     const row = this.config.rowOf[this.facing];
-    this.sheet.draw(ctx, this.animator.frame, row, this.x - w / 2, this.y - h);
+    this.sheet.draw(ctx, this.frameColumn, row, this.x - w / 2, this.y - h);
   }
 
   // デバッグ表示 (F1) 用の当たり判定の枠。

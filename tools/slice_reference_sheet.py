@@ -19,9 +19,36 @@ import sys
 from collections import Counter, deque
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageMath
 
 COLS, ROWS = 8, 4
+
+
+def resize_rgba(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """アルファ乗算済みで縮小する。
+
+    透明部分の RGB は (0,0,0) なので、そのまま縮小すると輪郭に
+    黒いふちが出る。一度アルファを掛けてから縮小し、あとで割り戻す。
+    """
+    r, g, b, a = image.convert("RGBA").split()
+    premultiplied = Image.merge("RGBA", (
+        ImageChops.multiply(r, a),
+        ImageChops.multiply(g, a),
+        ImageChops.multiply(b, a),
+        a,
+    )).resize(size, Image.LANCZOS)
+
+    r, g, b, a = premultiplied.split()
+    restored = [
+        ImageMath.lambda_eval(
+            lambda args: args["convert"](
+                args["min"](args["c"] * 255 / args["max"](args["al"], 1), 255), "L"
+            ),
+            c=channel, al=a,
+        )
+        for channel in (r, g, b)
+    ]
+    return Image.merge("RGBA", (*restored, a))
 
 
 def find_grid_lines(gray: Image.Image, axis: str, dark_level: int, coverage: float) -> list[int]:
@@ -174,8 +201,10 @@ def main() -> None:
                         help="背景を透明化せずそのまま残す")
     parser.add_argument("--tolerance", type=int, default=12,
                         help="背景色とみなす色の許容差 (既定: 12)")
-    parser.add_argument("--inset", type=int, default=2,
-                        help="罫線を確実に除くため内側に詰めるピクセル数 (既定: 2)")
+    parser.add_argument("--inset", type=int, default=4,
+                        help="罫線を確実に除くため内側に詰めるピクセル数 (既定: 4)")
+    parser.add_argument("--frame-height", type=int,
+                        help="1コマの高さをこの値に縮小する (縦横比は維持)")
     parser.add_argument("--dark-level", type=int, default=128,
                         help="罫線とみなす明るさの上限 (既定: 128)")
     parser.add_argument("--coverage", type=float, default=0.5,
@@ -207,10 +236,19 @@ def main() -> None:
     # 全マス共通の矩形で切り詰めてから、隙間なく並べ直す。
     left, top, right, bottom = union_bbox(cells)
     frame_w, frame_h = right - left, bottom - top
+    if args.frame_height and args.frame_height < frame_h:
+        # 縮小はシート全体をまとめてではなく、コマごとに行う。
+        # まとめて縮小すると隣のコマの色がにじんで混ざる。
+        scale = args.frame_height / frame_h
+        frame_w, frame_h = max(1, round(frame_w * scale)), args.frame_height
+
     sheet = Image.new("RGBA", (frame_w * COLS, frame_h * ROWS), (0, 0, 0, 0))
     for index, cell in enumerate(cells):
         row, col = divmod(index, COLS)
-        sheet.paste(cell.crop((left, top, right, bottom)), (col * frame_w, row * frame_h))
+        frame = cell.crop((left, top, right, bottom))
+        if (frame.width, frame.height) != (frame_w, frame_h):
+            frame = resize_rgba(frame, (frame_w, frame_h))
+        sheet.paste(frame, (col * frame_w, row * frame_h))
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

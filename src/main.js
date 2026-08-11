@@ -87,7 +87,7 @@ function drawDebugText(ctx, player, fps) {
   const lines = [
     `fps ${fps.toFixed(0)}`,
     `pos ${player.x.toFixed(0)}, ${player.y.toFixed(0)}`,
-    `facing ${player.facing}  frame ${player.animator.frame}`,
+    `facing ${player.facing}  frame ${player.frameColumn}`,
   ];
   ctx.font = '10px monospace';
   ctx.textBaseline = 'top';

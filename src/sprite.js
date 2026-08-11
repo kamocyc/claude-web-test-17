@@ -24,20 +24,21 @@ class SpriteSheet {
 }
 
 // 歩いている間だけコマを進め、止まったら立ち絵に戻すアニメーター。
+// 進めるのは「コマ番号」ではなく「シーケンス内の位置」。
+// 向きによって使うコマ数が違っても同じ仕組みで扱える。
 class WalkAnimator {
-  constructor({ frameCount, fps, idleFrame }) {
-    this.frameCount = frameCount;
+  constructor({ fps, idleIndex }) {
     this.fps = fps;
-    this.idleFrame = idleFrame;
-    this.frame = idleFrame;
+    this.idleIndex = idleIndex;
+    this.index = idleIndex;
     this.elapsed = 0;
   }
 
-  update(dt, isMoving) {
+  update(dt, isMoving, sequenceLength) {
     if (!isMoving) {
       // 止まったらアニメをリセットしておく。
       // こうしないと歩き出しのコマが毎回変わってちらついて見える。
-      this.frame = this.idleFrame;
+      this.index = this.idleIndex;
       this.elapsed = 0;
       return;
     }
@@ -45,7 +46,7 @@ class WalkAnimator {
     const secondsPerFrame = 1 / this.fps;
     while (this.elapsed >= secondsPerFrame) {
       this.elapsed -= secondsPerFrame;
-      this.frame = (this.frame + 1) % this.frameCount;
+      this.index = (this.index + 1) % sequenceLength;
     }
   }
 }
