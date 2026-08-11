@@ -205,6 +205,8 @@ def main() -> None:
                         help="罫線を確実に除くため内側に詰めるピクセル数 (既定: 4)")
     parser.add_argument("--frame-height", type=int,
                         help="1コマの高さをこの値に縮小する (縦横比は維持)")
+    parser.add_argument("--mirror-row", action="append", default=[], metavar="DST=SRC",
+                        help="DST 行を SRC 行の左右反転で置き換える (例: --mirror-row 3=2)")
     parser.add_argument("--dark-level", type=int, default=128,
                         help="罫線とみなす明るさの上限 (既定: 128)")
     parser.add_argument("--coverage", type=float, default=0.5,
@@ -219,6 +221,20 @@ def main() -> None:
     boxes = cell_boxes(image, args)
 
     cells = [image.crop(box) for box in boxes]
+
+    # 反転は「マスごと」に行う。キャラは元画像のマス内でほぼ中央に立っているので、
+    # マスの中心を軸に反転すれば体の中心線がずれない。
+    # (切り詰めたあとの矩形を軸にすると、後ろに流れる髪の分だけ中心がずれる)
+    for mapping in args.mirror_row:
+        try:
+            dst, src = (int(part) for part in mapping.split("=", 1))
+        except ValueError:
+            sys.exit(f"--mirror-row の書式が不正です: {mapping} (例: 3=2)")
+        if not (0 <= dst < ROWS and 0 <= src < ROWS):
+            sys.exit(f"--mirror-row の行番号が範囲外です: {mapping} (0〜{ROWS - 1})")
+        for col in range(COLS):
+            cells[dst * COLS + col] = cells[src * COLS + col].transpose(Image.FLIP_LEFT_RIGHT)
+
     if not args.keep_background:
         results = [make_background_transparent(cell, args.tolerance) for cell in cells]
         cells = [cell for cell, _ in results]
